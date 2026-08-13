@@ -14,6 +14,7 @@ outward-facing summary for setup, architecture, and deployment.
 | Layer | Choice |
 |---|---|
 | Frontend | Next.js 16 (App Router), TypeScript, Tailwind CSS |
+| Maps | react-leaflet + OpenStreetMap tiles — real, not mocked; no API key or billing needed |
 | Backend | FastAPI (Python 3.11+), SQLAlchemy ORM, Alembic migrations |
 | Database | SQLite (file-based, `backend/app.db`) |
 | Auth | Mocked — a `role` (`guest`\|`host`) field on the user, a client-side "current user" selector (`AuthContext`), no real sessions or passwords |
@@ -82,6 +83,8 @@ frontend/
     host/listings/[id]/edit/page.tsx
   components/             # one component per file; ListingForm.tsx is
                            # shared by the new/edit host pages
+    map/                     # MapInner.tsx (real react-leaflet map) +
+                              # ListingsMap.tsx (its ssr:false dynamic wrapper)
   context/                # AuthContext, WishlistContext (client-only state)
   lib/                    # api.ts (all fetches), types.ts, constants.ts, url.ts
 backend/
@@ -294,9 +297,11 @@ Start the backend first — the frontend fetches from it on every page.
 - **Payments are mocked.** The booking confirmation modal is a real UI step
   with a real summary, but explicitly says "no real payment is processed" —
   clicking through calls `POST /bookings` directly.
-- **Maps are mocked by omission.** `latitude`/`longitude` are stored and
-  returned by the API (per the schema), but no map library is used anywhere
-  in the UI — listings show city/country text instead.
+- **Maps are real, not mocked** — react-leaflet + OpenStreetMap tiles, no
+  API key or billing account needed, unlike Google/Mapbox. Pins use
+  `listings.latitude`/`longitude`; a listing created without coordinates
+  (the host form doesn't collect them) just shows no pin rather than an
+  error.
 - **Image hosting is mocked.** Listing photos are plain URLs (curated
   picsum.photos IDs in the seed data; hosts paste arbitrary URLs via the
   listing form) rather than a real upload/storage pipeline.

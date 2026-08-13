@@ -59,8 +59,6 @@ def _to_detail(db: Session, listing: Listing) -> ListingDetail:
     return ListingDetail(
         **summary.model_dump(),
         description=listing.description,
-        latitude=listing.latitude,
-        longitude=listing.longitude,
         created_at=listing.created_at,
         updated_at=listing.updated_at,
         host=listing.host,

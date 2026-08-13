@@ -8,6 +8,7 @@ import Gallery from "@/components/Gallery";
 import ReviewsSection from "@/components/ReviewsSection";
 import WishlistHeartButton from "@/components/WishlistHeartButton";
 import { StarIcon } from "@/components/icons";
+import ListingsMap from "@/components/map/ListingsMap";
 
 export default async function ListingDetailPage({
   params,
@@ -115,7 +116,7 @@ export default async function ListingDetailPage({
           </div>
 
           {listing.amenities.length > 0 ? (
-            <div className="py-6">
+            <div className="border-b border-neutral-200 py-6">
               <h2 className="mb-4 text-lg font-semibold text-neutral-900">What this place offers</h2>
               <ul className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
                 {listing.amenities.map((amenity) => (
@@ -127,6 +128,29 @@ export default async function ListingDetailPage({
               </ul>
             </div>
           ) : null}
+
+          <div className="py-6">
+            <h2 className="mb-4 text-lg font-semibold text-neutral-900">Where you&apos;ll be</h2>
+            <p className="mb-3 text-sm text-neutral-500">
+              {listing.city}, {listing.country}
+            </p>
+            <div className="h-80 overflow-hidden rounded-2xl">
+              <ListingsMap
+                pins={
+                  listing.latitude != null && listing.longitude != null
+                    ? [
+                        {
+                          id: listing.id,
+                          lat: listing.latitude,
+                          lng: listing.longitude,
+                          price: listing.price_per_night,
+                        },
+                      ]
+                    : []
+                }
+              />
+            </div>
+          </div>
         </div>
 
         <div className="lg:col-span-1">

@@ -20,3 +20,32 @@ body {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* Custom Leaflet marker content (a price pill, matching Airbnb's own map
+   markers) — built as a plain HTML string for L.divIcon rather than an
+   image-based icon, which sidesteps Leaflet's well-known broken-default-
+   marker-image issue under Next.js's bundler entirely. Centered via CSS
+   transform rather than iconAnchor math, so it doesn't need to know its
+   own rendered size ahead of time. */
+.map-price-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  border-radius: 9999px;
+  background: #fff;
+  color: #171717;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  border: 1px solid #e5e5e5;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+}
+.map-price-pill:hover {
+  background: #171717;
+  color: #fff;
+  border-color: #171717;
+  z-index: 1000 !important;
+}

@@ -79,6 +79,8 @@ class ListingSummary(BaseModel):
     property_type: str
     city: str
     country: str
+    latitude: float | None
+    longitude: float | None
     price_per_night: float
     max_guests: int
     bedrooms: int
@@ -91,8 +93,6 @@ class ListingSummary(BaseModel):
 
 class ListingDetail(ListingSummary):
     description: str
-    latitude: float | None
-    longitude: float | None
     created_at: datetime
     updated_at: datetime
     host: UserSummary

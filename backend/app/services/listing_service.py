@@ -42,6 +42,8 @@ def to_summary(listing: Listing, stats: ReviewStats) -> ListingSummary:
         property_type=listing.property_type,
         city=listing.city,
         country=listing.country,
+        latitude=listing.latitude,
+        longitude=listing.longitude,
         price_per_night=listing.price_per_night,
         max_guests=listing.max_guests,
         bedrooms=listing.bedrooms,

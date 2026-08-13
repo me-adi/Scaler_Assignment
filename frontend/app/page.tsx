@@ -2,9 +2,8 @@ import { ApiError, searchListings } from "@/lib/api";
 import type { ListingSearchParams, ListingSummary } from "@/lib/types";
 
 import FilterRow from "@/components/FilterRow";
-import ListingCard from "@/components/ListingCard";
 import ListingRow from "@/components/ListingRow";
-import Pagination from "@/components/Pagination";
+import ListingsSplitView from "@/components/ListingsSplitView";
 
 const PAGE_SIZE = 24;
 // No filters active → the curated "rows by city" browse view instead of a
@@ -129,18 +128,14 @@ export default async function HomePage({
             ))}
           </div>
         ) : (
-          <>
-            <div className="grid grid-cols-1 gap-x-6 gap-y-10 pt-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-              {result.items.map((listing) => (
-                <ListingCard key={listing.id} listing={listing} />
-              ))}
-            </div>
-            <Pagination
+          <div className="pt-4">
+            <ListingsSplitView
+              items={result.items}
               page={result.page}
               totalPages={result.total_pages}
               searchParams={currentParams}
             />
-          </>
+          </div>
         )}
       </section>
     </main>

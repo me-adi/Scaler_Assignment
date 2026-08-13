@@ -60,6 +60,8 @@ export interface ListingSummary {
   property_type: string;
   city: string;
   country: string;
+  latitude: number | null;
+  longitude: number | null;
   price_per_night: number;
   max_guests: number;
   bedrooms: number;
@@ -72,8 +74,6 @@ export interface ListingSummary {
 
 export interface ListingDetail extends ListingSummary {
   description: string;
-  latitude: number | null;
-  longitude: number | null;
   created_at: string;
   updated_at: string;
   host: UserSummary;
