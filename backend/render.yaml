@@ -12,35 +12,42 @@
 # directory (Render: "runs commands and interacts with files relative to
 # your service's root directory") — so they're the plain commands, no `cd`
 # prefix needed.
+#
+# No persistent disk, deliberately: Render requires payment info on file
+# for any service with a disk attached, even within otherwise-free usage.
+# free-tier services have an ephemeral filesystem — every redeploy, restart,
+# *or inactivity spin-down* wipes it (confirmed against Render's own docs:
+# "any changes to your web service's filesystem... are lost every time the
+# service redeploys, restarts, or spins down"). See README's Deployment
+# section for the full tradeoff.
+#
+# Because of that, seeding can't live in `initialDeployHook` — that field
+# runs exactly once, ever, on a service's first successful deploy, and
+# never again on later redeploys or spin-down/wake-ups (also confirmed
+# against Render's docs). A service that only seeded once would end up
+# empty after its first spin-down. Both `alembic upgrade head` and
+# `python -m app.seed` are idempotent, so they run as part of startCommand
+# instead — on every boot, not just the first one — which is what actually
+# guarantees the app has data whenever someone opens the link, at the cost
+# of any bookings/listings created during a live session not surviving a
+# restart.
 
 services:
   - type: web
     name: airbnb-clone-api
     runtime: python
+    plan: free
     rootDir: backend
-    buildCommand: pip install -r requirements.txt && alembic upgrade head
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install -r requirements.txt
+    startCommand: alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/v1/health
 
-    # Runs once, after the service's first successful deploy only (not on
-    # every subsequent redeploy) — exactly right for seeding: it populates
-    # the fresh persistent disk on day one without ever wiping real
-    # bookings made on the live site afterward. To reseed later on purpose,
-    # run `python -m app.seed` manually from the Shell tab instead.
-    initialDeployHook: python -m app.seed
-
-    # Disk mountPath is always an absolute container path — independent of
-    # rootDir, which only affects build/start commands, not disk mounting.
-    # DATABASE_PATH below points at this same path for that reason (not the
-    # backend-relative "./data" you'd get by analogy with rootDir).
-    disk:
-      name: airbnb-clone-data
-      mountPath: /var/data
-      sizeGB: 1
-
     envVars:
+      # No disk to point at — this is the same default database.py already
+      # falls back to when DATABASE_PATH is unset, so declaring it here is
+      # just making that explicit rather than relying on the fallback.
       - key: DATABASE_PATH
-        value: /var/data/app.db
+        value: ./app.db
       # Set manually in the Render dashboard once the Vercel URL exists —
       # necessarily a follow-up step, not something this file can know in
       # advance. Comma-separate multiple origins (e.g. a custom domain

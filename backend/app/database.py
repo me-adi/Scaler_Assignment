@@ -1,10 +1,12 @@
 """Engine, session, and declarative base for the SQLite database.
 
 The database file lives at `backend/app.db` by default (DATABASE_PATH
-unset). In production (see backend/render.yaml), DATABASE_PATH points at a
-Render persistent disk instead — a platform's default ephemeral filesystem
-would otherwise lose the SQLite file on every redeploy/restart. See
-README's Deployment section.
+unset) — including in production (see backend/render.yaml), which
+deliberately has no persistent disk (Render requires payment info on file
+for any service with one attached). The SQLite file is lost on every
+redeploy, restart, or inactivity spin-down as a result; render.yaml's
+startCommand re-runs migrations and the seed script on every boot to
+compensate. See README's Deployment section.
 """
 
 import os

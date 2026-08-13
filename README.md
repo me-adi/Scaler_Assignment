@@ -321,43 +321,70 @@ Start the backend first — the frontend fetches from it on every page.
 
 ## Deployment
 
-Backend on Render, frontend on Vercel. Two environment variables are the
-entire difference between local dev and production — `FRONTEND_URL`
-(backend, for CORS) and `NEXT_PUBLIC_API_URL` (frontend); everything else
-about the app is identical in both environments.
+Backend on Render (**free tier, no persistent disk, no payment info
+needed**), frontend on Vercel. Two environment variables are the entire
+difference between local dev and production — `FRONTEND_URL` (backend, for
+CORS) and `NEXT_PUBLIC_API_URL` (frontend); everything else about the app
+is identical in both environments.
+
+### Why there's no persistent disk
+
+Render requires payment info on file for *any* service with a disk
+attached, even if the service itself would otherwise run on the free plan.
+Staying disk-free keeps this fully free, at a real cost worth understanding
+up front: free-tier Render web services have an **ephemeral filesystem**,
+and per Render's own docs, *"any changes to your web service's
+filesystem... are lost every time the service redeploys, restarts, or spins
+down"* — inactivity spin-down included, not just deploys. SQLite is a file
+on that filesystem, so `app.db` is wiped on all three.
+
+`backend/render.yaml`'s `startCommand` compensates by running migrations
+and the (idempotent) seed script **on every boot**, not just once:
+
+```
+alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+This is deliberately *not* done via Render's `initialDeployHook` field,
+which looks like the natural fit but isn't — per Render's docs it *"runs
+only once per service instance"*, on the first successful deploy, and never
+again on later redeploys or spin-down/wake-ups. A service seeded that way
+would end up with an empty database after its very first idle spin-down.
+Running the idempotent migrate+seed as part of `startCommand` instead means
+it re-fires every time the process actually starts, which is what free-tier
+spin-down/wake-up actually triggers.
+
+**Net effect:** the app is always populated with demo data whenever someone
+opens the link, even after sitting idle — but anything created during a
+live session (a booking, a new listing) only lasts until the next restart
+or spin-down. For a portfolio/demo deployment that's a reasonable trade:
+zero cost, zero payment info, and the app never looks broken or empty to a
+visitor.
 
 ### What `backend/render.yaml` provisions
 
 This is a [Render Blueprint](https://render.com/docs/blueprint-spec) —
-Render reads it and creates the service (and its disk) for you, rather than
-you clicking through equivalent dashboard settings by hand:
+Render reads it and creates the service for you, rather than you clicking
+through equivalent dashboard settings by hand:
 
-- A Python web service, built from `backend/` (`rootDir`), running
-  `pip install -r requirements.txt && alembic upgrade head` on each deploy
-  and `uvicorn app.main:app --host 0.0.0.0 --port $PORT` to serve.
-- A 1GB **persistent disk**, mounted at `/var/data`. `DATABASE_PATH` is set
-  to `/var/data/app.db` so the SQLite file lives there instead of on the
-  service's normal ephemeral filesystem, which is wiped on every redeploy
-  or restart. (Disk `mountPath` is always an absolute container path,
-  independent of `rootDir` — that's why this isn't the more analogous-
-  looking `./data`.)
-- `initialDeployHook: python -m app.seed` — runs once, right after the
-  service's *first* successful deploy only (not on every subsequent one),
-  populating the fresh disk with demo data without ever wiping real
-  bookings made on the live site afterward. To reseed later on purpose,
-  run `python -m app.seed` manually from Render's **Shell** tab.
+- A Python web service on the **free plan**, built from `backend/`
+  (`rootDir`) — `pip install -r requirements.txt` to build, then the
+  migrate+seed+serve `startCommand` above.
+- `DATABASE_PATH` is set to `./app.db` — the same value `database.py`
+  already falls back to when the var is unset, declared explicitly here
+  rather than relied on implicitly.
 - `FRONTEND_URL` is declared with `sync: false` — a placeholder Render will
   prompt you to fill in during setup, not a value baked into the file. It
   doesn't exist yet at this point anyway (see step 3 below).
 
-Locally, both `DATABASE_PATH` and `FRONTEND_URL` are unset and fall back to
-their dev defaults (`./app.db`, `http://localhost:3000`) — nothing about
-local dev changes because this file exists.
+Locally, both env vars are unset and fall back to their dev defaults
+(`./app.db`, `http://localhost:3000`) — nothing about local dev changes
+because this file exists.
 
 ### 0. Prerequisite: push to a git remote
 
 Render and Vercel both deploy from a connected GitHub (or GitLab/Bitbucket)
-repo. This project isn't a git repo yet:
+repo.
 
 ```powershell
 cd C:\Users\adity\Desktop\Scaler_Assignment
@@ -372,23 +399,17 @@ UI + `git remote add origin <url>` + `git push -u origin main`).
 ### 1. Backend on Render
 
 1. Dashboard → **New +** → **Blueprint** → connect the GitHub repo. Render
-   detects `backend/render.yaml` and shows a preview of what it'll create.
+   detects `backend/render.yaml` and shows a preview of what it'll create —
+   confirm it shows the free plan and no disk before applying.
 2. When prompted for `FRONTEND_URL` (the one `sync: false` var), leave it
    as a placeholder for now (e.g. `http://localhost:3000`) — the real
    Vercel URL doesn't exist until step 2. You'll come back and fix this in
    step 3.
-3. Apply. Render builds the service, runs migrations, mounts the disk, and
-   runs the seed hook automatically — no manual dashboard clicking needed
-   for any of that.
+3. Apply. Render builds the service; `startCommand` migrates and seeds on
+   first boot — no manual dashboard clicking needed for either.
 4. Note the assigned URL, e.g. `https://airbnb-clone-api.onrender.com`.
 5. Verify: `https://<render-url>/api/v1/health` → `{"status":"ok"}`, and
    `https://<render-url>/docs` loads Swagger.
-
-**Persistent disks require a paid Render plan** — the free web-service tier
-doesn't support them. If you're intentionally staying on the free tier,
-delete the `disk` block and the `DATABASE_PATH` env var from
-`render.yaml` before deploying; you'll get ephemeral SQLite instead (fine
-for a demo, see the caveat below).
 
 ### 2. Frontend on Vercel
 
@@ -419,31 +440,22 @@ Now that the Vercel URL exists, go back to Render:
 
 - [ ] `GET https://<render-url>/api/v1/health` → `{"status":"ok"}`
 - [ ] `https://<render-url>/docs` loads
-- [ ] Listings aren't empty (the `initialDeployHook` seeded them — if you
-      deleted the disk/hook for the free tier, run `python -m app.seed`
-      manually from the Shell tab instead)
+- [ ] Listings aren't empty (`startCommand` seeds on every boot, including
+      the first)
 - [ ] The Vercel URL's home page shows listing rows, not an error state
 - [ ] Browser devtools console/network tab: no CORS errors on the deployed
       frontend
 - [ ] End-to-end: search, open a listing, complete a mocked booking, see it
-      appear under Trips
+      appear under Trips — then refresh after the service has spun down and
+      confirm it's gone again (expected, not a bug — see the tradeoff above)
 - [ ] Image domains: no change needed — `picsum.photos` and `i.pravatar.cc`
       are already in `next.config.mjs`'s `images.remotePatterns`, baked into
       the frontend build regardless of environment
 
-### The SQLite-on-persistent-disk caveat
-
-SQLite is a file on disk, not a networked database — Render's web services
-default to an *ephemeral* filesystem, so without the disk in `render.yaml`,
-`app.db` would revert to whatever the last build wrote on every redeploy or
-restart. That's sometimes fine for a demo (always-fresh data, zero cost),
-which is why the free-tier fallback above is a legitimate option, not just
-a degraded one. With the disk attached, bookings made on the live site
-persist across deploys like a real deployment would; without it, they only
-survive until the next redeploy or restart.
-
 ### Notes specific to Render's free tier
 
 Free web services spin down after inactivity; the first request after idle
-can take 30–60s to cold-start. Not a bug — just don't be surprised by a slow
-first load when showing this to someone after it's been idle.
+can take 30–60s to cold-start *and* re-run migrate+seed as part of waking
+up, so that first request may be slower still. Not a bug — just don't be
+surprised by a slow first load when showing this to someone after it's been
+idle.
