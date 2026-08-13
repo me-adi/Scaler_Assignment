@@ -90,13 +90,14 @@ frontend/
 backend/
   app/
     main.py                # FastAPI app, CORS, router registration
-    database.py             # engine/session (DATABASE_URL-configurable)
+    database.py             # engine/session (DATABASE_PATH-configurable)
     models.py                # SQLAlchemy ORM models
     schemas.py                # Pydantic request/response models
     routers/                  # listings, bookings, reviews, wishlist, users
     services/                  # booking_service, listing_service
     seed.py                     # idempotent demo-data seeder
   alembic/                # migrations
+  render.yaml              # Render Blueprint — see Deployment section
 ```
 
 ## Database Schema
@@ -321,18 +322,37 @@ Start the backend first — the frontend fetches from it on every page.
 ## Deployment
 
 Backend on Render, frontend on Vercel. Two environment variables are the
-entire difference between local dev and production — `CORS_ALLOWED_ORIGINS`
-(backend) and `NEXT_PUBLIC_API_URL` (frontend); everything else about the
-app is identical in both environments.
+entire difference between local dev and production — `FRONTEND_URL`
+(backend, for CORS) and `NEXT_PUBLIC_API_URL` (frontend); everything else
+about the app is identical in both environments.
 
-A real limitation to know going in: **SQLite lives on the filesystem**, and
-Render's web services have an *ephemeral* filesystem by default — every
-redeploy or restart gets a fresh disk, so `backend/app.db` reverts to
-whatever `python -m app.seed` last wrote at build time. For a demo/portfolio
-deployment that's usually fine (or even desirable — always-fresh data). If
-you need bookings made on the live site to actually persist, attach a
-[Render Disk](https://render.com/docs/disks) and point `DATABASE_URL` at a
-path on it (see "Backend on Render" step 7 below).
+### What `backend/render.yaml` provisions
+
+This is a [Render Blueprint](https://render.com/docs/blueprint-spec) —
+Render reads it and creates the service (and its disk) for you, rather than
+you clicking through equivalent dashboard settings by hand:
+
+- A Python web service, built from `backend/` (`rootDir`), running
+  `pip install -r requirements.txt && alembic upgrade head` on each deploy
+  and `uvicorn app.main:app --host 0.0.0.0 --port $PORT` to serve.
+- A 1GB **persistent disk**, mounted at `/var/data`. `DATABASE_PATH` is set
+  to `/var/data/app.db` so the SQLite file lives there instead of on the
+  service's normal ephemeral filesystem, which is wiped on every redeploy
+  or restart. (Disk `mountPath` is always an absolute container path,
+  independent of `rootDir` — that's why this isn't the more analogous-
+  looking `./data`.)
+- `initialDeployHook: python -m app.seed` — runs once, right after the
+  service's *first* successful deploy only (not on every subsequent one),
+  populating the fresh disk with demo data without ever wiping real
+  bookings made on the live site afterward. To reseed later on purpose,
+  run `python -m app.seed` manually from Render's **Shell** tab.
+- `FRONTEND_URL` is declared with `sync: false` — a placeholder Render will
+  prompt you to fill in during setup, not a value baked into the file. It
+  doesn't exist yet at this point anyway (see step 3 below).
+
+Locally, both `DATABASE_PATH` and `FRONTEND_URL` are unset and fall back to
+their dev defaults (`./app.db`, `http://localhost:3000`) — nothing about
+local dev changes because this file exists.
 
 ### 0. Prerequisite: push to a git remote
 
@@ -351,35 +371,34 @@ UI + `git remote add origin <url>` + `git push -u origin main`).
 
 ### 1. Backend on Render
 
-1. **New → Web Service** → connect the GitHub repo.
-2. **Root directory**: `backend`.
-3. **Runtime**: Python 3.
-4. **Build command**: `pip install -r requirements.txt && alembic upgrade head`
-5. **Start command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-6. **Environment variables** (Render dashboard → Environment):
-   | Key | Value |
-   |---|---|
-   | `CORS_ALLOWED_ORIGINS` | leave unset for now — comes back in step 3 |
-   | `DATABASE_URL` | only if using a persistent disk — see below |
-7. *(Optional, for persistence)* Add a **Render Disk**, mount path e.g.
-   `/data`, then set `DATABASE_URL=sqlite:////data/app.db` (four slashes —
-   three for the `sqlite://` scheme, one to start the absolute path).
-8. Deploy. Once live, seed it once via Render's **Shell** tab:
-   `python -m app.seed`. (If you'd rather always start from fresh demo data
-   — reasonable given the ephemeral-disk default — append
-   `&& python -m app.seed` to the start command instead, so it reseeds on
-   every deploy.)
-9. Note the assigned URL, e.g. `https://airbnb-clone-api.onrender.com`.
-10. Verify: `https://<render-url>/api/v1/health` → `{"status":"ok"}`, and
-    `https://<render-url>/docs` loads Swagger.
+1. Dashboard → **New +** → **Blueprint** → connect the GitHub repo. Render
+   detects `backend/render.yaml` and shows a preview of what it'll create.
+2. When prompted for `FRONTEND_URL` (the one `sync: false` var), leave it
+   as a placeholder for now (e.g. `http://localhost:3000`) — the real
+   Vercel URL doesn't exist until step 2. You'll come back and fix this in
+   step 3.
+3. Apply. Render builds the service, runs migrations, mounts the disk, and
+   runs the seed hook automatically — no manual dashboard clicking needed
+   for any of that.
+4. Note the assigned URL, e.g. `https://airbnb-clone-api.onrender.com`.
+5. Verify: `https://<render-url>/api/v1/health` → `{"status":"ok"}`, and
+   `https://<render-url>/docs` loads Swagger.
+
+**Persistent disks require a paid Render plan** — the free web-service tier
+doesn't support them. If you're intentionally staying on the free tier,
+delete the `disk` block and the `DATABASE_PATH` env var from
+`render.yaml` before deploying; you'll get ephemeral SQLite instead (fine
+for a demo, see the caveat below).
 
 ### 2. Frontend on Vercel
 
 1. **Add New → Project** → import the same GitHub repo.
 2. **Root directory**: `frontend`. Framework preset (Next.js) is
-   auto-detected.
+   auto-detected — no `vercel.json` needed for this project (no custom
+   headers/redirects/rewrites, no monorepo build overrides beyond the root
+   directory setting, which is a dashboard setting, not a file).
 3. **Environment variable**: `NEXT_PUBLIC_API_URL` =
-   `https://<render-url>/api/v1` (the URL from step 1.9, with the API
+   `https://<render-url>/api/v1` (the URL from step 1.4, with the API
    prefix).
 4. Deploy. Note the assigned URL, e.g. `https://airbnb-clone.vercel.app`.
 
@@ -387,11 +406,11 @@ UI + `git remote add origin <url>` + `git push -u origin main`).
 time**, not read at runtime — if you change `NEXT_PUBLIC_API_URL` later,
 trigger a new deploy (not just a restart) for it to take effect.
 
-### 3. Close the loop: update backend CORS
+### 3. Close the loop: set the real FRONTEND_URL on Render
 
 Now that the Vercel URL exists, go back to Render:
 
-1. Environment → set `CORS_ALLOWED_ORIGINS` to the Vercel URL from step
+1. Service → Environment → set `FRONTEND_URL` to the Vercel URL from step
    2.4 (comma-separate multiple origins if needed, e.g. a custom domain
    alongside the `*.vercel.app` one — exact match only, no wildcards).
 2. Save — Render redeploys automatically on env var changes.
@@ -400,7 +419,9 @@ Now that the Vercel URL exists, go back to Render:
 
 - [ ] `GET https://<render-url>/api/v1/health` → `{"status":"ok"}`
 - [ ] `https://<render-url>/docs` loads
-- [ ] `python -m app.seed` has been run at least once (listings aren't empty)
+- [ ] Listings aren't empty (the `initialDeployHook` seeded them — if you
+      deleted the disk/hook for the free tier, run `python -m app.seed`
+      manually from the Shell tab instead)
 - [ ] The Vercel URL's home page shows listing rows, not an error state
 - [ ] Browser devtools console/network tab: no CORS errors on the deployed
       frontend
@@ -409,6 +430,17 @@ Now that the Vercel URL exists, go back to Render:
 - [ ] Image domains: no change needed — `picsum.photos` and `i.pravatar.cc`
       are already in `next.config.mjs`'s `images.remotePatterns`, baked into
       the frontend build regardless of environment
+
+### The SQLite-on-persistent-disk caveat
+
+SQLite is a file on disk, not a networked database — Render's web services
+default to an *ephemeral* filesystem, so without the disk in `render.yaml`,
+`app.db` would revert to whatever the last build wrote on every redeploy or
+restart. That's sometimes fine for a demo (always-fresh data, zero cost),
+which is why the free-tier fallback above is a legitimate option, not just
+a degraded one. With the disk attached, bookings made on the live site
+persist across deploys like a real deployment would; without it, they only
+survive until the next redeploy or restart.
 
 ### Notes specific to Render's free tier
 

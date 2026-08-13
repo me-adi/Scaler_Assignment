@@ -13,12 +13,12 @@ from app.routers import bookings, listings, reviews, users, wishlist
 
 API_V1_PREFIX = "/api/v1"
 
-# Comma-separated in production (e.g. a Vercel deployment + its preview
-# URLs); defaults to the local Next.js dev server so nothing needs to
-# change for local development. See README's deployment checklist.
+# Comma-separated in production (e.g. the Vercel URL, optionally alongside
+# a custom domain); defaults to the local Next.js dev server so nothing
+# needs to change for local development. See README's Deployment section.
 ALLOWED_ORIGINS = [
     origin.strip()
-    for origin in os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    for origin in os.environ.get("FRONTEND_URL", "http://localhost:3000").split(",")
     if origin.strip()
 ]
 

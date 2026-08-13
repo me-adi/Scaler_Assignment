@@ -1,30 +1,26 @@
 """Engine, session, and declarative base for the SQLite database.
 
-The database file lives at `backend/app.db` by default (see CLAUDE.md).
-Override via the DATABASE_URL env var in production — e.g. a Render
-persistent disk path — since a platform's ephemeral local filesystem would
-otherwise lose the SQLite file on every redeploy/restart. See README's
-deployment checklist.
+The database file lives at `backend/app.db` by default (DATABASE_PATH
+unset). In production (see backend/render.yaml), DATABASE_PATH points at a
+Render persistent disk instead — a platform's default ephemeral filesystem
+would otherwise lose the SQLite file on every redeploy/restart. See
+README's Deployment section.
 """
 
 import os
 from collections.abc import Generator
-from pathlib import Path
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-# backend/app/database.py -> backend/
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{BASE_DIR / 'app.db'}")
+DATABASE_PATH = os.environ.get("DATABASE_PATH", "./app.db")
+DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
 engine = create_engine(
     DATABASE_URL,
     # SQLite + FastAPI: connections are shared across threadpool workers.
-    # Harmless no-op for a non-SQLite DATABASE_URL.
-    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {},
+    connect_args={"check_same_thread": False},
 )
 
 

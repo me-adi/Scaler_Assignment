@@ -1,0 +1,49 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# Deploy: push this repo to GitHub, then in the Render dashboard choose
+# "New +" -> "Blueprint" and point it at the repo. Render finds this file
+# automatically (it must live at the repo root or, as here, be referenced
+# via the Blueprint's root — see README's Deployment section for the exact
+# click-path, since Render's Blueprint picker looks for render.yaml at the
+# repo root by default and this project keeps it in backend/ alongside the
+# service it describes).
+#
+# rootDir makes buildCommand/startCommand run with backend/ as the working
+# directory (Render: "runs commands and interacts with files relative to
+# your service's root directory") — so they're the plain commands, no `cd`
+# prefix needed.
+
+services:
+  - type: web
+    name: airbnb-clone-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && alembic upgrade head
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health
+
+    # Runs once, after the service's first successful deploy only (not on
+    # every subsequent redeploy) — exactly right for seeding: it populates
+    # the fresh persistent disk on day one without ever wiping real
+    # bookings made on the live site afterward. To reseed later on purpose,
+    # run `python -m app.seed` manually from the Shell tab instead.
+    initialDeployHook: python -m app.seed
+
+    # Disk mountPath is always an absolute container path — independent of
+    # rootDir, which only affects build/start commands, not disk mounting.
+    # DATABASE_PATH below points at this same path for that reason (not the
+    # backend-relative "./data" you'd get by analogy with rootDir).
+    disk:
+      name: airbnb-clone-data
+      mountPath: /var/data
+      sizeGB: 1
+
+    envVars:
+      - key: DATABASE_PATH
+        value: /var/data/app.db
+      # Set manually in the Render dashboard once the Vercel URL exists —
+      # necessarily a follow-up step, not something this file can know in
+      # advance. Comma-separate multiple origins (e.g. a custom domain
+      # alongside the *.vercel.app one).
+      - key: FRONTEND_URL
+        sync: false
