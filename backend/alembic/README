@@ -1,0 +1,9 @@
+Alembic migration environment.
+
+Run all commands from `backend/` with the virtualenv active:
+
+  alembic revision --autogenerate -m "message"
+  alembic upgrade head
+  alembic downgrade -1
+
+The database URL comes from `app.database.DATABASE_URL`, not alembic.ini.
